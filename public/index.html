@@ -10,14 +10,26 @@
   </head>
 
   <body>
-    <div>
+    <!--div>
         <p><button id="btn_request">Go to Request &raquo;</button></p>
+    </!--div-->
+
+    <div class="select">
+        <label for="audioSource">Audio source: </label><select id="audioSource"></select>
+      </div>
+    
+    <div class="select">
+        <label for="videoSource">Video source: </label><select id="videoSource"></select>
     </div>
+
+    <video autoplay muted playsinline></video>
+
+
   </body>
 
   <script>
 
-        var SIGNALING_SERVER = "http://localhost:3000";
+        var SIGNALING_SERVER = "http://localhost:8081";
 
         var USE_AUDIO = true;
         var USE_VIDEO = true;
@@ -33,14 +45,79 @@
         var peers = {};                /* keep track of our peer connections, indexed by peer_id (aka socket.io id) */
         var peer_media_elements = {};  /* keep track of our <video>/<audio> tags, indexed by peer_id */
 
-        $(document).ready(function() {
 
+
+/*########################################카메라 복수개 처리 시작################################################################*/
+
+        var videoElement = document.querySelector('video');
+        var audioSelect = document.querySelector('select#audioSource');
+        var videoSelect = document.querySelector('select#videoSource');
+
+        audioSelect.onchange = getStream;
+        videoSelect.onchange = getStream;
+
+        function getDevices() {
+            // AFAICT in Safari this only gets default devices until gUM is called :/
+            return navigator.mediaDevices.enumerateDevices();
+        }
+        
+        function gotDevices(deviceInfos) {
+            window.deviceInfos = deviceInfos; // make available to console
+            console.log('Available input and output devices:', deviceInfos);
+            for (const deviceInfo of deviceInfos) {
+                const option = document.createElement('option');
+                option.value = deviceInfo.deviceId;
+                if (deviceInfo.kind === 'audioinput') {
+                    option.text = deviceInfo.label || `Microphone ${audioSelect.length + 1}`;
+                    audioSelect.appendChild(option);
+                } else if (deviceInfo.kind === 'videoinput') {
+                    option.text = deviceInfo.label || `Camera ${videoSelect.length + 1}`;
+                    videoSelect.appendChild(option);
+                }
+            }
+        }
+        
+        function getStream() {
+            if (window.stream) {
+                window.stream.getTracks().forEach(track => {
+                    track.stop();
+                });
+            }
+            const audioSource = audioSelect.value;
+            const videoSource = videoSelect.value;
+            const constraints = {
+                audio: {deviceId: audioSource ? {exact: audioSource} : undefined},
+                video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+            };
+            return navigator.mediaDevices.getUserMedia(constraints).
+                then(gotStream).catch(handleError);
+        }
+        
+        function gotStream(stream) {
+            window.stream = stream; // make stream available to console
+            audioSelect.selectedIndex = [...audioSelect.options].
+                findIndex(option => option.text === stream.getAudioTracks()[0].label);
+            videoSelect.selectedIndex = [...videoSelect.options].
+                findIndex(option => option.text === stream.getVideoTracks()[0].label);
+            videoElement.srcObject = stream;
+        }
+        
+        function handleError(error) {
+            console.error('Error: ', error);
+        }
+
+
+/*########################################카메라 복수개 처리 끝################################################################*/
+
+
+        $(document).ready(function() {
+/*
             document.getElementById("btn_request").addEventListener("click", function () {
                 signaling_socket.emit("message", "aaa");
             });
-
-
-
+*/
+            //복수개 카메라 예제
+            getStream().then(getDevices).then(gotDevices);
 
             console.log("Connecting to signaling server");
 
@@ -239,6 +316,8 @@
         }
 
 
+        //--use-fake-ui-for-media-stream 동의 없이 시작 가능
+        //<iframe src="https://example.com" allow="camera *;microphone *"></iframe>
         function setup_local_media(callback, errorback) {
 
             if (local_media_stream != null) {  /* ie, if we've already been initialized */
@@ -250,9 +329,10 @@
             console.log("Requesting access to local audio / video inputs");
 
             navigator.getUserMedia = ( navigator.getUserMedia ||
-                    navigator.webkitGetUserMedia ||
-                    navigator.mozGetUserMedia ||
-                    navigator.msGetUserMedia);
+                                        navigator.webkitGetUserMedia ||
+                                        navigator.mozGetUserMedia ||
+                                        navigator.msGetUserMedia ||
+                                        navigator.oGetUserMedia );
 
             attachMediaStream = function(element, stream) {
                 console.log('DEPRECATED, attachMediaStream will soon be removed.');
